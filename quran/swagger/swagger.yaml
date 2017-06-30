@@ -1,0 +1,103 @@
+consumes:
+- application/json
+- application/xml
+- application/gob
+- application/x-gob
+definitions:
+  Quran:
+    description: Information from Quran (default view)
+    example:
+      aya: 7.294712e+18
+      href: Voluptatem recusandae.
+      index: 2.9675235e+17
+      sura: 7.050608e+18
+      text: Aut aspernatur sit molestiae quo qui.
+    properties:
+      aya:
+        description: 'aya # within sura'
+        example: 7.294712e+18
+        format: int64
+        type: integer
+      href:
+        description: API href for making requests to the aya
+        example: Voluptatem recusandae.
+        type: string
+      index:
+        description: index to each aya
+        example: 2.9675235e+17
+        format: int64
+        type: integer
+      sura:
+        description: 'sura #'
+        example: 7.050608e+18
+        format: int64
+        type: integer
+      text:
+        description: Arabic text
+        example: Aut aspernatur sit molestiae quo qui.
+        type: string
+    required:
+    - index
+    - href
+    - text
+    title: 'Mediatype identifier: application/vnd.quran+json; view=default'
+    type: object
+host: localhost:8888
+info:
+  description: A simple microservice for 'sura's, 'aya's etc.
+  title: Quranic API
+  version: ""
+paths:
+  /quran/{suraID}/{ayaID}:
+    get:
+      description: Get aya by sura & aya
+      operationId: quran#show
+      parameters:
+      - description: aya ID
+        in: path
+        name: ayaID
+        required: true
+        type: integer
+      - description: sura ID
+        in: path
+        name: suraID
+        required: true
+        type: integer
+      produces:
+      - application/vnd.quran+json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/Quran'
+        "404":
+          description: Not Found
+      schemes:
+      - http
+      summary: show quran
+      tags:
+      - quran
+produces:
+- application/json
+- application/xml
+- application/gob
+- application/x-gob
+responses:
+  NotFound:
+    description: Not Found
+  OK:
+    description: OK
+    schema:
+      $ref: '#/definitions/Quran'
+schemes:
+- http
+securityDefinitions:
+  OAuth2:
+    authorizationUrl: http://localhost:8888/authorization
+    description: Use OAuth2 to authenticate
+    flow: accessCode
+    scopes:
+      api:read: Provides read access
+    tokenUrl: http://localhost:8888/token
+    type: oauth2
+swagger: "2.0"
