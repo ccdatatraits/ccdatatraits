@@ -8,24 +8,26 @@ import (
 	"os"
 	"encoding/json"
 	"strings"
-	"sort"
 	"io"
 	"log"
 )
 
 const (
-	__ENDPOINT = "http://ewr-changes-x6.ewr.mmracks.internal:8082"
-	__TOPIC    = "ewr.changes.snapshot.currency-rates.1"
-
 	PROXY_ADDR = "127.0.0.1:8123"
+	__ENDPOINT = "http://ewr-changes-x6.ewr.mmracks.internal:8082"
 )
 
 var __TopicsURL = func() string { return __ENDPOINT + "/topics" }()
-var __SubscriptionName = func() string { return "ts_" + __TOPIC }()
-var __SubscriptionURL = func() string { return __ENDPOINT + "/consumers/" + __SubscriptionName }()
-var __CommonURL = func() string { return __SubscriptionURL + "/instances/" + __TOPIC }()
-var __DataURL = func() string { return __CommonURL + "/topics/" + __TOPIC }()
-var __UnsubscribeURL = func() string { return __CommonURL }()
+var __SubscriptionNameBuilder = func(topic string) string { return "ts_" + topic }
+//var __SubscriptionName = func() string { return __SubscriptionNameBuilder(__TOPIC) }()
+var __SubscriptionURLBuilder = func(topic string) string { return __ENDPOINT + "/consumers/" + __SubscriptionNameBuilder(topic) }
+//var __SubscriptionURL = func() string { return __SubscriptionURLBuilder(__TOPIC) }()
+var __CommonURLBuilder = func(topic string) string { return __SubscriptionURLBuilder(topic) + "/instances/" + topic }
+//var __CommonURL = func() string { return __CommonURLBuilder(__TOPIC) }()
+var __DataURLBuilder = func(topic string) string { return __CommonURLBuilder(topic) + "/topics/" + topic }
+//var __DataURL = func() string { return __DataURLBuilder(__TOPIC) }()
+var __UnsubscribeURLBuilder = func(topic string) string { return __CommonURLBuilder(topic) }
+//var __UnsubscribeURL = func() string { return __CommonURL }()
 
 //var __MainContext = context.Background()
 
@@ -112,7 +114,7 @@ func deleteThroughProxy(httpClient *http.Client, url string) string {
 	return string(b)
 }
 
-func getThroughProxy(check bool, httpClient *http.Client, url string, headers map[string][]string) string {
+func getThroughProxy(check bool, debuggingLength int, httpClient *http.Client, url string, headers map[string][]string) string {
 	// create a request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -149,6 +151,13 @@ func getThroughProxy(check bool, httpClient *http.Client, url string, headers ma
 		Value MessageValue
 	}
 	currency_map := make(map[string]string)
+	debugging_check := func(dec *json.Decoder, iteration int) bool {
+		if debuggingLength <= 0 {
+			return dec.More()
+		} else {
+			return dec.More() && iteration < debuggingLength
+		}
+	}
 	if check {
 		dec := json.NewDecoder(resp.Body)
 		// read open bracket
@@ -160,24 +169,25 @@ func getThroughProxy(check bool, httpClient *http.Client, url string, headers ma
 
 		array_length := 0
 		// while the array contains values
-		for /*i:= 0; */dec.More()/* && i < 10; i++*/ {
-			array_length++
-			var m Message
+		for debugging_check(dec, array_length) {
+			var m map[string]interface{}
 			// decode an array value (Message)
 			err := dec.Decode(&m)
 			if err != nil {
 				log.Fatal(err)
 			}
-
 			fmt.Printf("%v\n", m)
-			fields := m.Value.Fields
-			currency_map[fields.Currency_Code] = fmt.Sprint(fields.Rate, " - ", fields.Date)
+			//fields := m.Value.Fields
+			//currency_map[fields.Currency_Code] = fmt.Sprint(fields.Rate, " - ", fields.Date)
+			array_length++
 		}
 
 		// read closing bracket
 		_, err = dec.Token()
 		if err != nil {
 			log.Fatal(err)
+		} else {
+			resp.Body.Close()
 		}
 		//fmt.Printf("%T: %v\n", t, t)
 		/*for i := 0; i < 100; i++ {
@@ -215,18 +225,34 @@ func getThroughProxy(check bool, httpClient *http.Client, url string, headers ma
 func main() { //http.ProxyURL() ??
 	//setupBGProxyServer()
 	httpClient := setupHTTPClient()
-
-	getTopics(httpClient)
-
-	_ = subscribeTopic(httpClient)
-	fetchData(httpClient)
-	unsubscribeTopic(httpClient)
+	topicsInterest := []string{"ewr.changes.snapshot.currency-rates.1", "ewr.changes.snapshot.currencies.1"}
+	all_topics := getTopics(httpClient)
+	topics_map := map[string]struct{}{}
+	for _, thisTopic := range all_topics {
+		if value, okay := topics_map[thisTopic]; !okay {
+			fmt.Println(fmt.Sprint(" -> \"", thisTopic, "\""))
+			if thisTopic == topicsInterest[0] {
+				topics_map[thisTopic] = struct{}{}
+			} else if thisTopic == topicsInterest[1] {
+				topics_map[thisTopic] = struct{}{}
+			}
+		} else {
+			fmt.Println("Already exists:", value)
+		}
+	}
+	for topicInterest := range topics_map {
+		fmt.Println(topicInterest)
+		_ = subscribeTopic(httpClient, topicInterest)
+		fetchData(httpClient, topicInterest)
+		unsubscribeTopic(httpClient, topicInterest)
+	}
 }
 
-func fetchData(httpClient *http.Client) {
-	fmt.Println("EXE: Fetch Data:", __DataURL)
+func fetchData(httpClient *http.Client, topicInterest string) {
+	fmt.Println("EXE: Fetch Data:", __DataURLBuilder(topicInterest))
 	var headers = map[string][]string{"Accept":{"application/vnd.kafka.avro.v1+json"}}
-	currency_map := getThroughProxy(true, httpClient, __DataURL, headers)
+	DEBUGGING_LENGTH := 2
+	currency_map := getThroughProxy(true, DEBUGGING_LENGTH, httpClient, __DataURLBuilder(topicInterest), headers)
 	fmt.Println("DATA MAP:", currency_map)
 	/*fetchDataReader := strings.NewReader()
 	//checkType("fetchDataReader", fetchDataReader)
@@ -255,16 +281,10 @@ func fetchData(httpClient *http.Client) {
 	}*/
 }
 
-type sortable []interface{}
-
-func (a sortable) Len() int           { return len(a) }
-func (a sortable) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a sortable) Less(i, j int) bool { return a[i].(string) < a[j].(string) }
-
-func getTopics(httpClient *http.Client) {
+func getTopics(httpClient *http.Client) []string {
 	fmt.Println("EXE: Fetch Topics:", __TopicsURL)
 	var headers map[string][]string = nil //map[string][]string{"Content-Type":{"what"}}
-	getTopicsReader := strings.NewReader(getThroughProxy(false, httpClient, __TopicsURL, headers))
+	getTopicsReader := strings.NewReader(getThroughProxy(false, 0, httpClient, __TopicsURL, headers))
 	//checkType("getTopicsReader", getTopicsReader)
 	dec := json.NewDecoder(getTopicsReader)
 	var v interface{}
@@ -276,11 +296,9 @@ func getTopics(httpClient *http.Client) {
 	case []interface{}:
 		topics = v.([]interface{})
 	}
-	//sort.Sort(sortable(topics))
 	var strArray []string
 	//var myStrArray sortable_string.StringArray
 	for _, topic := range topics {
-		//fmt.Println(topic)
 		strArray = append(strArray, topic.(string))
 		//myStrArray = append(myStrArray, topic.(string))
 	}
@@ -291,19 +309,19 @@ func getTopics(httpClient *http.Client) {
 	/*fmt.Println(myStrArray)
 	sort.Sort(myStrArray)
 	fmt.Println(myStrArray)*/
-	if index := sort.SearchStrings(strArray, __TOPIC); index < len(strArray) {
+	/*if index := sort.SearchStrings(strArray, topicInterest); index < len(strArray) {
 		//fmt.Println("Found at index:", index, "::", strArray[index])
-		fmt.Println("Will create Subscription:", __SubscriptionName)
+		fmt.Println("Will create Subscription:", __SubscriptionNameBuilder(topicInterest))
 	} else {
-		panic(fmt.Sprintln("Could not find TOPIC:", __TOPIC))
-	}
-
+		panic(fmt.Sprintln("Could not find TOPIC:", topicInterest))
+	}*/
+	return strArray
 	//sortable_string.SearchStrings()
 }
 
-func unsubscribeTopic(httpClient *http.Client) {
-	fmt.Println("EXE: Delete Subscription:", __SubscriptionName)
-	unsubscribeTopicReader := strings.NewReader(deleteThroughProxy(httpClient, __UnsubscribeURL))
+func unsubscribeTopic(httpClient *http.Client, topicInterest string) {
+	fmt.Println("EXE: Delete Subscription:", __SubscriptionNameBuilder(topicInterest))
+	unsubscribeTopicReader := strings.NewReader(deleteThroughProxy(httpClient, __UnsubscribeURLBuilder(topicInterest)))
 	//checkType("unsubscribeTopicReader", unsubscribeTopicReader)
 	dec := json.NewDecoder(unsubscribeTopicReader)
 	var v interface{}
@@ -311,19 +329,19 @@ func unsubscribeTopic(httpClient *http.Client) {
 	switch vv := v.(type) {
 	case nil:
 		//fmt.Println("nil value")
-		fmt.Println("Unsubscribed from Subscription:", __SubscriptionName)
+		fmt.Println("Unsubscribed from Subscription:", __SubscriptionNameBuilder(topicInterest))
 	case map[string]interface{}:
 		for k_vv, v_vv := range vv {
 			fmt.Println(k_vv, ":", v_vv)
 		}
 	}
 }
-func subscribeTopic(httpClient *http.Client) map[string]interface{} {
-	fmt.Println("EXE: Create Subscription:", __SubscriptionName)
+func subscribeTopic(httpClient *http.Client, topicInterest string) map[string]interface{} {
+	fmt.Println("EXE: Create Subscription:", __SubscriptionNameBuilder(topicInterest))
 	var headers = map[string][]string{"Content-Type": {"application/vnd.kafka.v1+json"}}
-	subscribeTopicBody := strings.NewReader("{\"name\": \"" + __TOPIC + "\", \"format\": \"avro\", \"auto.offset.reset\": \"smallest\"}")
+	subscribeTopicBody := strings.NewReader("{\"name\": \"" + topicInterest + "\", \"format\": \"avro\", \"auto.offset.reset\": \"smallest\"}")
 	//checkType("subscribeTopicBody", subscribeTopicBody)
-	subscribeTopicReader := strings.NewReader(postThroughProxy(httpClient, __SubscriptionURL, subscribeTopicBody, headers))
+	subscribeTopicReader := strings.NewReader(postThroughProxy(httpClient, __SubscriptionURLBuilder(topicInterest), subscribeTopicBody, headers))
 	//checkType("subscribeTopicReader", subscribeTopicReader)
 	dec := json.NewDecoder(subscribeTopicReader)
 	var v interface{}
