@@ -116,7 +116,7 @@ func (s SortableString) Swap(i, j int) {
 }
 func (msg Message) String() string {
 	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintf("%6s(%6s) -> ", msg.Value.Fields["id"], msg.Value.Fields["version"]))
+	buffer.WriteString(fmt.Sprintf("id:%s(version:%s) ::: ", msg.Value.Fields["id"], msg.Value.Fields["version"]))
 	fields_array := []string{}
 	for k := range msg.Value.Fields {
 		if k != "id" && k != "version" {
@@ -178,6 +178,7 @@ func getThroughProxy(check bool, debuggingLength int, httpClient *http.Client, u
 				log.Fatal(err)
 			}
 			fmt.Printf("%v\n", m)
+			fillSummarisedInfo(summarisedInfo, m)
 			array_length++
 		}
 
@@ -207,14 +208,21 @@ func getThroughProxy(check bool, debuggingLength int, httpClient *http.Client, u
 	}
 	return string(b)
 }
+func fillSummarisedInfo(info map[string]string, msg Message) {
+	for k, v := range msg.Value.Fields {
+		if k == "currency_code" {
+			info[v.(string)] = msg.String()
+		}
+	}
+}
 
 func main() { //http.ProxyURL() ??
 	//setupBGProxyServer() check from initial commits
 	httpClient := setupHTTPClient()
 	//topicsInterest := []string{"ewr.changes.history.batch-strategy-status.1","ewr.changes.history.component-creatives.1","ewr.changes.history.media-deals.1","ewr.changes.history.t1db.1","ewr.changes.history.tags.1","ewr.changes.snapshot.advertisers.1","ewr.changes.snapshot.agencies.1","ewr.changes.snapshot.atomic-creatives.1","ewr.changes.snapshot.audience-segments.1","ewr.changes.snapshot.audience-vendors.1","ewr.changes.snapshot.budget-flights.1","ewr.changes.snapshot.campaigns.1","ewr.changes.snapshot.concepts.1","ewr.changes.snapshot.currencies.1","ewr.changes.snapshot.deals.1","ewr.changes.snapshot.media-deals.1","ewr.changes.snapshot.organizations.1","ewr.changes.snapshot.pixel-bundles.1","ewr.changes.snapshot.pixel-providers.1","ewr.changes.snapshot.pixels.1","ewr.changes.snapshot.publishers.1","ewr.changes.snapshot.strategies.1","ewr.changes.snapshot.strategy-concepts.1","ewr.changes.snapshot.strategy-deals.1","ewr.changes.snapshot.supply-sources.1","ewr.changes.snapshot.target-dimensions.1","ewr.changes.snapshot.target-values.1","ewr.changes.snapshot.user-advertisers.1","ewr.changes.snapshot.user-agencies.1","ewr.changes.snapshot.user-organizations.1","ewr.changes.snapshot.users.1","ewr.changes.snapshot.vendors.1","ewr.changes.snapshot.viewability.1","ewr.kessel-run.mt-event-secondary.1","ewr.kessel-run.mt-event.1","mt_event"}
-	topicsInterest := []string{"ewr.changes.snapshot.currency-rates.1", "ewr.changes.snapshot.budget-flights.1", "ewr.changes.snapshot.deals.1",}
+	topicsInterest := []string{"ewr.changes.snapshot.currency-rates.1",}
 	all_topics := getTopics(httpClient)
-	DEBUGGING_LENGTH := 2
+	DEBUGGING_LENGTH := 0
 	for _, thisTopic := range all_topics {
 		//fmt.Println(fmt.Sprint(" -> \"", thisTopic, "\""))
 		for _, topicInterest := range topicsInterest {
