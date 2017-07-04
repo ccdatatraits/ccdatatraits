@@ -21,6 +21,8 @@
                 myTextArea.value = myTextArea.value + "\n" + evt.data;
                 if(evt.data === "pong") {
                     setTimeout(function(){ws.send("ping");}, 500);
+                } else {
+                    setTimeout(function(){ws.send("pong");}, 500);
                 }
             };
 
@@ -37,6 +39,6 @@
 </head>
 <body>
 <button onclick="myWebsocketStart()">Start websocket!</button>
-<textarea id="textarea1" title="textarea1">MyTextArea</textarea>
+<textarea id="textarea1" title="MyTextArea" style="margin: 2px; height: 310px; width: 702px;">MyTextArea</textarea>
 </body>
 </html>
