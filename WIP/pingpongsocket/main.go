@@ -65,7 +65,7 @@ func main() {
 	}
 }
 func rootHandler(w http.ResponseWriter, r *http.Request) {
-	indexFile, err := os.Open("WIP/pingpongsocket/html/index.html")
+	indexFile, err := os.Open("html/index.html")
 	if err != nil {
 		fmt.Println(err)
 	}
